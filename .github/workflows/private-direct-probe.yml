@@ -1,0 +1,32 @@
+name: g01-private-direct-token-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt private repository clone and branch write
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          rm -rf private-control
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/apexblkw-ow-2lt415yust/g01-private-control-20260803.git private-control
+          clone_status=$?
+          echo private_clone_status=$clone_status
+          if [ "$clone_status" -eq 0 ]; then
+            cd private-control
+            git config user.name "G01 direct caller probe"
+            git config user.email "testingtiger@apexblack.org"
+            echo G01_DIRECT_CROSS_ACTOR_WRITE_SENTINEL > g01-direct-cross-actor-write.txt
+            git add g01-direct-cross-actor-write.txt
+            git commit -m "G01 direct cross actor write probe"
+            git push origin HEAD:refs/heads/g01-direct-write-probe
+            echo private_push_exit=$?
+          fi
+          exit 0
