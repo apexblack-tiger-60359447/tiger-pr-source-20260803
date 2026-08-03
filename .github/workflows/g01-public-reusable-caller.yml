@@ -1,0 +1,14 @@
+name: G01 public reusable caller
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  invoke:
+    permissions:
+      contents: write
+    uses: apexblkw-ow-2lt415yust/g01-worker-lab-20260803/.github/workflows/g01-public-reusable-writer.yml@main
