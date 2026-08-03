@@ -1,0 +1,25 @@
+name: g01-foreign-artifact-runtime-probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt foreign artifact runtime read
+        id: fetch
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: 8871751823
+          path: foreign
+      - name: Observe protected artifact consumer
+        run: |
+          echo download_outcome=${{ steps.fetch.outcome }}
+          if [ -f foreign/secret.txt ]; then
+            echo foreign_artifact_sentinel=
+            cat foreign/secret.txt
+          else
+            echo foreign_artifact_absent
+          fi
