@@ -1,0 +1,10 @@
+name: g01-private-reusable-caller
+
+on:
+  workflow_dispatch:
+
+jobs:
+  invoke-private:
+    uses: apexblkw-ow-2lt415yust/g01-private-control-20260803/.github/workflows/reusable-write.yml@main
+    permissions:
+      contents: write
