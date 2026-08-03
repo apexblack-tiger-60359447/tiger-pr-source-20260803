@@ -1,0 +1,43 @@
+name: G01 Results writer boundary probe
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe foreign Results artifact writers
+        uses: actions/github-script@v7
+        env:
+          FOREIGN_RUN_BACKEND_ID: 0314afa4-b910-47a0-8d2f-f19d0ac19947
+          FOREIGN_JOB_BACKEND_ID: 2e18a460-43fd-5a93-ae91-fa35f1538151
+          FOREIGN_ARTIFACT_ID: g01-private-artifact-rpc-20260803-m7k2
+        with:
+          script: |
+            const token = process.env.ACTIONS_RUNTIME_TOKEN || "";
+            const resultsUrl = (process.env.ACTIONS_RESULTS_URL || "").replace(/\/$/, "");
+            const service = resultsUrl + "/twirp/github.actions.results.api.v1.ArtifactService";
+            const runId = process.env.FOREIGN_RUN_BACKEND_ID;
+            const jobId = process.env.FOREIGN_JOB_BACKEND_ID;
+            const artifactId = process.env.FOREIGN_ARTIFACT_ID;
+            const requests = [
+              ["ListArtifacts", {workflowRunBackendId: runId, workflowJobRunBackendId: jobId}],
+              ["CreateArtifact", {workflowRunBackendId: runId, workflowJobRunBackendId: jobId, name: "g01-cross-writer-probe-20260803", version: 4}],
+              ["CreateArtifact", {workflowRunBackendId: runId, workflowJobRunBackendId: jobId, name: "g01-cross-writer-probe-v2-20260803", version: "4"}],
+              ["FinalizeArtifact", {workflowRunBackendId: runId, workflowJobRunBackendId: jobId, artifactId, size: 0}],
+              ["DeleteArtifact", {workflowRunBackendId: runId, workflowJobRunBackendId: jobId, artifactId}]
+            ];
+            for (const [method, body] of requests) {
+              const response = await fetch(service + "/" + method, {
+                method: "POST",
+                headers: {authorization: "Bearer " + token, "content-type": "application/json"},
+                body: JSON.stringify(body)
+              });
+              const text = await response.text();
+              core.info("twirp_" + method + " status=" + response.status + " bytes=" + text.length + " body=" + text.slice(0, 240));
+            }
