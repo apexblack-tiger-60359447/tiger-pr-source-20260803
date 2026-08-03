@@ -1,0 +1,26 @@
+name: g01-cache-cross-repo-consumer
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt cross-repository private cache restore
+        id: restore
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: foreign-cache
+          key: g01-private-cache-20260803-c9p3l7
+      - name: Observe protected cache consumer
+        run: |
+          echo "restore_outcome=${{ steps.restore.outcome }}"
+          echo "cache_hit=${{ steps.restore.outputs.cache-hit }}"
+          if [ -f foreign-cache/secret.txt ]; then
+            echo 'cross_repo_private_cache_sentinel='$(cat foreign-cache/secret.txt)
+          else
+            echo 'cross_repo_private_cache_absent'
+          fi
